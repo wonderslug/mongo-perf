@@ -65,7 +65,7 @@
                 <input type="checkbox" name="versions" value={{version}}>{{versions}}<br>
                 %end
               <h2>MultiDB</h2>
-                <input type="checkbox" name="multidb" value="1">MultiDB<br>
+                <input type="checkbox" name="multidb" value="0">MultiDB<br>
             </div>
           </fieldset>
         </form>
