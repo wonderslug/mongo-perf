@@ -53,6 +53,7 @@ function formatRunDate(now) {
 
 function runTest(test, thread, multidb, runSeconds, shard, writeOptions) {
 
+
     if (typeof writeOptions === "undefined") writeOptions = getDefaultWriteOptions();
     if (typeof shard === "undefined") shard = 0;
     if (typeof testFilter === "undefined") testFilter = "sanity";
