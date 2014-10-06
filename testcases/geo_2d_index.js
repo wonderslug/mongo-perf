@@ -138,6 +138,8 @@ var x_min = (width / 2) * -1;
 var y_max = height / 2;
 var y_min = (height / 2) * -1;
 var prng = new PseudoRandomNumberGenerator(seed);
+var xy_data = [];
+var latlong_data = [];
 
 
 /**
@@ -180,8 +182,14 @@ function getLongLatCoordinatePosition() {
  * @param collection
  */
 var populateGridData = function (collection) {
-    var sampler = poissonDiscSampler(prng, width, height, radius);
-    populateData(collection, sampler, width, height);
+    if (xy_data.length == 0) {
+        var sampler = poissonDiscSampler(prng, width, height, radius);
+        xy_data = populateData(sampler, width, height);
+    }
+    xy_data.forEach(function (point) {
+        collection.insert(point);
+    });
+
 };
 
 /**
@@ -189,9 +197,15 @@ var populateGridData = function (collection) {
  * @param collection
  */
 var populateSphericalData = function (collection) {
-    var sampler = poissonDiscSampler(prng, 360, 180, radius);
-    populateData(collection, sampler, 360, 180);
+    if (latlong_data.length == 0) {
+        var sampler = poissonDiscSampler(prng, 360, 180, radius);
+        latlong_data = populateData(sampler, 360, 180);
+    }
+    latlong_data.forEach(function (point) {
+        collection.insert(point);
+    });
 };
+
 
 /**
  * Populate the passed collection with a random set of data based for the height and width passed in
@@ -201,11 +215,12 @@ var populateSphericalData = function (collection) {
  * @param width
  * @param height
  */
-var populateData = function (collection, sampler, width, height) {
+var populateData = function (sampler, width, height) {
+    var data = [];
     for (var i = 0; i < maxPoints; ++i) {
         var s = sampler();
         var type = '';
-        if (!s) return true;
+        if (!s) return data;
         var x = s[0] - (width / 2);
         var y = s[1] - (height / 2);
         var val = prng.nextInt(100);
@@ -224,8 +239,9 @@ var populateData = function (collection, sampler, width, height) {
         else if (val <= 90) {
             type = 'resident'
         }
-        collection.insert({"type": type, "loc": [x, y]});
+        data.push({"type": type, "loc": [x, y]});
     }
+    return data;
 };
 
 /**
