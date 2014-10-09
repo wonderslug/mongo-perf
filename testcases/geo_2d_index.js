@@ -17,6 +17,18 @@ function PseudoRandomNumberGenerator(seed) {
     this.seed = function () {
         return __seed;
     };
+
+    /**
+     * Gets the next number from a linear congruential generator giving an evenly distributed set of numbers
+     * and constants set from a 2^32 overflow set of recommended randomness constants.
+     *
+     * Knuth, D.E. 1981, Seminumerical Algorithms, 2nd ed., vol. 2 of The Art of Computer Programming
+     * (Reading, MA: Addison-Wesley), §§3.2–3.3.
+     *
+     * discussed http://staff.ustc.edu.cn/~yjdeng/CQMC2012/lecture_notes/rndm.pdf
+     *
+     * @returns {number}
+     */
     this.nextNumber = function () {
         __seed = (__seed * 9301 + 49297) % 233280;
         return __seed / 233280.0;
@@ -33,7 +45,8 @@ function PseudoRandomNumberGenerator(seed) {
     };
 
     /**
-     * Replication of Math.random() for direct replacement use
+     * Replication of Math.random() for direct replacement use.
+     * Creates a < 1 float from the available integer number generator.
      * @returns {number}
      */
     this.random = function () {
@@ -130,7 +143,7 @@ function poissonDiscSampler(rng, width, height, radius) {
  */
 var width = 1000,
     height = 1000,
-    radius = 2,
+    radius = 4,
     seed = 1000,
     maxPoints = 1000000;
 var x_max = width / 2;
@@ -140,20 +153,6 @@ var y_min = (height / 2) * -1;
 var prng = new PseudoRandomNumberGenerator(seed);
 var xy_data = [];
 var latlong_data = [];
-
-
-/**
- * Helper function to get random string for use in the pre sections
- *
- * @param length
- * @returns {string}
- */
-function randomString(length) {
-    chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    var result = '';
-    for (var i = length; i > 0; --i) result += chars[Math.round(prng.random() * (chars.length - 1))];
-    return result;
-}
 
 
 /**
@@ -178,18 +177,36 @@ function getLongLatCoordinatePosition() {
 }
 
 /**
- * Generates random grid data
- * @param collection
+ * Setup the initial set of grid data
  */
-var populateGridData = function (collection) {
+var setupGridData = function () {
     if (xy_data.length == 0) {
         var sampler = poissonDiscSampler(prng, width, height, radius);
         xy_data = populateData(sampler, width, height);
     }
+};
+
+/**
+ * Generates random grid data
+ * @param collection
+ */
+var populateGridData = function (collection) {
+    setupGridData();
+    print(xy_data.length);
     xy_data.forEach(function (point) {
         collection.insert(point);
     });
+};
 
+
+/**
+ * Setup the initial set of spherical data
+ */
+var setupSphericalData = function () {
+    if (latlong_data.length == 0) {
+        var sampler = poissonDiscSampler(prng, 360, 180, radius);
+        latlong_data = populateData(sampler, 360, 180);
+    }
 };
 
 /**
@@ -197,10 +214,7 @@ var populateGridData = function (collection) {
  * @param collection
  */
 var populateSphericalData = function (collection) {
-    if (latlong_data.length == 0) {
-        var sampler = poissonDiscSampler(prng, 360, 180, radius);
-        latlong_data = populateData(sampler, 360, 180);
-    }
+    setupSphericalData();
     latlong_data.forEach(function (point) {
         collection.insert(point);
     });
@@ -216,6 +230,7 @@ var populateSphericalData = function (collection) {
  * @param height
  */
 var populateData = function (sampler, width, height) {
+    //print(new Date());
     var data = [];
     for (var i = 0; i < maxPoints; ++i) {
         var s = sampler();
@@ -420,196 +435,198 @@ for (var run in find_runs) {
     }
     tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinBoxFind", find_runs[run]),
         pre: function (collection) {
+            print(new Date());
             populateGridData(collection);
+            print(new Date());
             collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
         },
         ops: ops_list
     });
-
-// $polygon
-    ops_list = [];
-    for (var i = 0; i < find_runs[run].ops; ++i) {
-        var polygon = getRandomRegularHexagon(find_runs[run].points);
-        var op = buildOp(find_runs[run],
-            {
-                op: "find",
-                query: { loc: { $geoWithin: { $polygon: polygon } }}
-            });
-        ops_list.push(op);
-    }
-    tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinPolygonFind", find_runs[run]),
-        pre: function (collection) {
-            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-            populateGridData(collection);
-        },
-        ops: ops_list
-    });
-
-// $center
-    ops_list = [];
-    for (var i = 0; i < find_runs[run].ops; ++i) {
-        var circle = getRandomCircle(find_runs[run].points);
-        ops_list.push();
-        var op = buildOp(find_runs[run],
-            {
-                op: "find",
-                query: { loc: { $geoWithin: { $center: [
-                    [circle.center.x, circle.center.y],
-                    circle.radius
-                ] } }}
-            });
-        ops_list.push(op);
-    }
-    tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinCenterFind", find_runs[run]),
-        pre: function (collection) {
-            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-            populateGridData(collection);
-        },
-        ops: ops_list
-    });
-// $centerSphere
-    ops_list = [];
-    for (var i = 0; i < find_runs[run].ops; ++i) {
-        var circle = getRandomSphericalCircleArea(find_runs[run].points);
-        var op = buildOp(find_runs[run],
-            { op: "find",
-                query: { loc: { $geoWithin: { $centerSphere: [
-                    [circle.center.long, circle.center.lat],
-                    circle.radius
-                ] } }}
-            });
-        ops_list.push(op);
-    }
-    tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinCenterSphereFind", find_runs[run]),
-        pre: function (collection) {
-            collection.ensureIndex({ "loc": "2d" });
-            populateSphericalData(collection);
-        },
-        ops: ops_list
-    });
+//
+//// $polygon
+//    ops_list = [];
+//    for (var i = 0; i < find_runs[run].ops; ++i) {
+//        var polygon = getRandomRegularHexagon(find_runs[run].points);
+//        var op = buildOp(find_runs[run],
+//            {
+//                op: "find",
+//                query: { loc: { $geoWithin: { $polygon: polygon } }}
+//            });
+//        ops_list.push(op);
+//    }
+//    tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinPolygonFind", find_runs[run]),
+//        pre: function (collection) {
+//            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//            populateGridData(collection);
+//        },
+//        ops: ops_list
+//    });
+//
+//// $center
+//    ops_list = [];
+//    for (var i = 0; i < find_runs[run].ops; ++i) {
+//        var circle = getRandomCircle(find_runs[run].points);
+//        ops_list.push();
+//        var op = buildOp(find_runs[run],
+//            {
+//                op: "find",
+//                query: { loc: { $geoWithin: { $center: [
+//                    [circle.center.x, circle.center.y],
+//                    circle.radius
+//                ] } }}
+//            });
+//        ops_list.push(op);
+//    }
+//    tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinCenterFind", find_runs[run]),
+//        pre: function (collection) {
+//            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//            populateGridData(collection);
+//        },
+//        ops: ops_list
+//    });
+//// $centerSphere
+//    ops_list = [];
+//    for (var i = 0; i < find_runs[run].ops; ++i) {
+//        var circle = getRandomSphericalCircleArea(find_runs[run].points);
+//        var op = buildOp(find_runs[run],
+//            { op: "find",
+//                query: { loc: { $geoWithin: { $centerSphere: [
+//                    [circle.center.long, circle.center.lat],
+//                    circle.radius
+//                ] } }}
+//            });
+//        ops_list.push(op);
+//    }
+//    tests.push({ name: buildTestName("Geo2DIndex.FindGeoWithinCenterSphereFind", find_runs[run]),
+//        pre: function (collection) {
+//            collection.ensureIndex({ "loc": "2d" });
+//            populateSphericalData(collection);
+//        },
+//        ops: ops_list
+//    });
 }
-
-/**********************
- * Map Reduce
- */
-var mapper = function () {
-    emit(this.type, 1);
-};
-var reducer = function (type, count) {
-    return Array.sum(count);
-};
-// $box
-ops_list = [];
-for (var i = 0; i < 100; ++i) {
-    var box = getRandomBox(1000);
-    ops_list.push({ op: "command",
-        ns: "#B_DB",
-        command: { mapReduce: "#B_COLL",
-            map: mapper,
-            reduce: reducer,
-            out: { inline: 1 },
-            query: { loc: { $geoWithin: {   $box: [
-                [box.bottomLeft.x, box.bottomLeft.y],
-                [box.upperRight.x, box.upperRight.y]
-            ] } }}
-        }});
-}
-tests.push({ name: "Geo2DIndex.MapReduceGeoWithinBox",
-    pre: function (collection) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-    },
-    ops: ops_list
-});
-
-// $polygon
-ops_list = [];
-for (var i = 0; i < 100; ++i) {
-    var polygon = getRandomRegularHexagon(1000);
-    ops_list.push({ op: "command",
-        ns: "#B_DB",
-        command: { mapReduce: "#B_COLL",
-            map: mapper,
-            reduce: reducer,
-            out: { inline: 1 },
-            query: { loc: { $geoWithin: { $polygon: polygon } }}
-        }});
-}
-tests.push({ name: "Geo2DIndex.MapReduceGeoWithinPolygon",
-    pre: function (collection) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-    },
-    ops: ops_list
-});
-
-// $center
-ops_list = [];
-for (var i = 0; i < 100; ++i) {
-    var circle = getRandomCircle(1000);
-    ops_list.push({ op: "command",
-        ns: "#B_DB",
-        command: { mapReduce: "#B_COLL",
-            map: mapper,
-            reduce: reducer,
-            out: { inline: 1 },
-            query: { loc: { $geoWithin: { $center: [
-                [circle.center.x, circle.center.y],
-                circle.radius
-            ] } }}
-        }});
-}
-tests.push({ name: "Geo2DIndex.MapReduceGeoWithinCenter",
-    pre: function (collection) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-    },
-    ops: ops_list
-});
-
-// $centerSphere
-ops_list = [];
-for (var i = 0; i < 100; ++i) {
-    var circle = getRandomSphericalCircleArea(1000);
-    ops_list.push({ op: "command",
-        ns: "#B_DB",
-        command: { mapReduce: "#B_COLL",
-            map: mapper,
-            reduce: reducer,
-            out: { inline: 1 },
-            query: { loc: { $geoWithin: { $centerSphere: [
-                [circle.center.long, circle.center.lat],
-                circle.radius
-            ] } }}
-        }});
-}
-tests.push({ name: "Geo2DIndex.MapReduceGeoWithinCenterSphere",
-    pre: function (collection) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-    },
-    ops: ops_list
-});
-
-
-/*************
- * Insert
- */
-ops_list = [];
-for (var i = 0; i < 10000; ++i) {
-    var rand_coord = getXYCoordinatePosition();
-    var op = { op: "insert",
-        doc: {loc: [ rand_coord.x, rand_coord.y], type: {"#RAND_STRING": [ 20 ] }, note: { "#RAND_STRING": [ 50 ] }}};
-    ops_list.push(op);
-}
-
-tests.push({ name: "Geo2DIndex.Insert",
-        pre: function (collection) {
-            collection.ensureIndex({ "geometry": "2d" }, { "min": x_min, "max": x_max });
-        },
-        ops: ops_list
-    }
-);
+//
+///**********************
+// * Map Reduce
+// */
+//var mapper = function () {
+//    emit(this.type, 1);
+//};
+//var reducer = function (type, count) {
+//    return Array.sum(count);
+//};
+//// $box
+//ops_list = [];
+//for (var i = 0; i < 100; ++i) {
+//    var box = getRandomBox(1000);
+//    ops_list.push({ op: "command",
+//        ns: "#B_DB",
+//        command: { mapReduce: "#B_COLL",
+//            map: mapper,
+//            reduce: reducer,
+//            out: { inline: 1 },
+//            query: { loc: { $geoWithin: {   $box: [
+//                [box.bottomLeft.x, box.bottomLeft.y],
+//                [box.upperRight.x, box.upperRight.y]
+//            ] } }}
+//        }});
+//}
+//tests.push({ name: "Geo2DIndex.MapReduceGeoWithinBox",
+//    pre: function (collection) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//    },
+//    ops: ops_list
+//});
+//
+//// $polygon
+//ops_list = [];
+//for (var i = 0; i < 100; ++i) {
+//    var polygon = getRandomRegularHexagon(1000);
+//    ops_list.push({ op: "command",
+//        ns: "#B_DB",
+//        command: { mapReduce: "#B_COLL",
+//            map: mapper,
+//            reduce: reducer,
+//            out: { inline: 1 },
+//            query: { loc: { $geoWithin: { $polygon: polygon } }}
+//        }});
+//}
+//tests.push({ name: "Geo2DIndex.MapReduceGeoWithinPolygon",
+//    pre: function (collection) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//    },
+//    ops: ops_list
+//});
+//
+//// $center
+//ops_list = [];
+//for (var i = 0; i < 100; ++i) {
+//    var circle = getRandomCircle(1000);
+//    ops_list.push({ op: "command",
+//        ns: "#B_DB",
+//        command: { mapReduce: "#B_COLL",
+//            map: mapper,
+//            reduce: reducer,
+//            out: { inline: 1 },
+//            query: { loc: { $geoWithin: { $center: [
+//                [circle.center.x, circle.center.y],
+//                circle.radius
+//            ] } }}
+//        }});
+//}
+//tests.push({ name: "Geo2DIndex.MapReduceGeoWithinCenter",
+//    pre: function (collection) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//    },
+//    ops: ops_list
+//});
+//
+//// $centerSphere
+//ops_list = [];
+//for (var i = 0; i < 100; ++i) {
+//    var circle = getRandomSphericalCircleArea(1000);
+//    ops_list.push({ op: "command",
+//        ns: "#B_DB",
+//        command: { mapReduce: "#B_COLL",
+//            map: mapper,
+//            reduce: reducer,
+//            out: { inline: 1 },
+//            query: { loc: { $geoWithin: { $centerSphere: [
+//                [circle.center.long, circle.center.lat],
+//                circle.radius
+//            ] } }}
+//        }});
+//}
+//tests.push({ name: "Geo2DIndex.MapReduceGeoWithinCenterSphere",
+//    pre: function (collection) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//    },
+//    ops: ops_list
+//});
+//
+//
+///*************
+// * Insert
+// */
+//ops_list = [];
+//for (var i = 0; i < 10000; ++i) {
+//    var rand_coord = getXYCoordinatePosition();
+//    var op = { op: "insert",
+//        doc: {loc: [ rand_coord.x, rand_coord.y], type: {"#RAND_STRING": [ 20 ] }, note: { "#RAND_STRING": [ 50 ] }}};
+//    ops_list.push(op);
+//}
+//
+//tests.push({ name: "Geo2DIndex.Insert",
+//        pre: function (collection) {
+//            collection.ensureIndex({ "geometry": "2d" }, { "min": x_min, "max": x_max });
+//        },
+//        ops: ops_list
+//    }
+//);
 
 /****************
  * Updates
@@ -619,243 +636,254 @@ var update_runs = [
     { ops: 100, points: 30, multi: true},
 ];
 for (var run in update_runs) {
-    // $box
-    ops_list = [];
-    for (var i = 0; i < update_runs[run].ops; ++i) {
-        var box = getRandomBox(update_runs[run].points);
-        ops_list.push(
-            {
-                op: "update",
-                query: { loc: { $geoWithin: {   $box: [
-                    [box.bottomLeft.x, box.bottomLeft.y],
-                    [box.upperRight.x, box.upperRight.y]
-                ] } }},
-                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
-                multi: update_runs[run].multi
-            }
-        );
-    }
-    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinBox", update_runs[run].multi),
-        pre: function (collection) {
-            populateGridData(collection);
-            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        },
-        ops: ops_list
-    });
+//    // $box
+//    ops_list = [];
+//    for (var i = 0; i < update_runs[run].ops; ++i) {
+//        var box = getRandomBox(update_runs[run].points);
+//        ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
+//        ops_list.push(
+//            {
+//                op: "update",
+//                query: { loc: { $geoWithin: {   $box: [
+//                    [box.bottomLeft.x, box.bottomLeft.y],
+//                    [box.upperRight.x, box.upperRight.y]
+//                ] } }, thread: { "#VARIABLE": "thread" }},
+//                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
+//                multi: update_runs[run].multi
+//            }
+//        );
+//    }
+//    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinBox", update_runs[run].multi),
+//        pre: function (collection, env) {
+//            setupGridData(collection);
+//            print(new Date());
+//            xy_data.forEach(function (point) {
+//                for (var j = 0; j < env.threads; j++) {
+//                    point.thread = j;
+//                    collection.insert(point);
+//                }
+//            });
+//            print(new Date());
+//            print(i);
+//            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//            print(new Date());
+//        },
+//        ops: []
+//    });
 
-    // $polygon
-    ops_list = [];
-    for (var i = 0; i < update_runs[run].ops; ++i) {
-        var polygon = getRandomRegularHexagon(update_runs[run].points);
-        ops_list.push(
-            {
-                op: "update",
-                query: { loc: { $geoWithin: { $polygon: polygon } }},
-                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
-                multi: update_runs[run].multi
-            }
-        );
-    }
-    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinPolygon", update_runs[run].multi),
-        pre: function (collection) {
-            populateGridData(collection);
-            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        },
-        ops: ops_list
-    });
-
-    // $center
-    ops_list = [];
-    for (var i = 0; i < update_runs[run].ops; ++i) {
-        var circle = getRandomCircle(update_runs[run].points);
-        ops_list.push(
-            {
-                op: "update",
-                query: { loc: { $geoWithin: { $center: [
-                    [circle.center.x, circle.center.y],
-                    circle.radius
-                ] } }},
-                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
-                multi: update_runs[run].multi
-            }
-        );
-    }
-    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinCenter", update_runs[run].multi),
-        pre: function (collection) {
-            populateGridData(collection);
-            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        },
-        ops: ops_list
-    });
-
-    // $centerSphere
-    ops_list = [];
-    for (var i = 0; i < update_runs[run].ops; ++i) {
-        var circle = getRandomSphericalCircleArea(update_runs[run].points);
-        ops_list.push(
-            {
-                op: "update",
-                query: { loc: { $geoWithin: { $centerSphere: [
-                    [circle.center.long, circle.center.lat],
-                    circle.radius
-                ] } }},
-                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
-                multi: update_runs[run].multi
-            }
-        );
-    }
-    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinCenterSphere", update_runs[run].multi),
-        pre: function (collection) {
-            populateGridData(collection);
-            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        },
-        ops: ops_list
-    });
+//    // $polygon
+//    ops_list = [];
+//    for (var i = 0; i < update_runs[run].ops; ++i) {
+//        var polygon = getRandomRegularHexagon(update_runs[run].points);
+//        ops_list.push(
+//            {
+//                op: "update",
+//                query: { loc: { $geoWithin: { $polygon: polygon } }},
+//                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
+//                multi: update_runs[run].multi
+//            }
+//        );
+//    }
+//    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinPolygon", update_runs[run].multi),
+//        pre: function (collection) {
+//            populateGridData(collection);
+//            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        },
+//        ops: ops_list
+//    });
+//
+//    // $center
+//    ops_list = [];
+//    for (var i = 0; i < update_runs[run].ops; ++i) {
+//        var circle = getRandomCircle(update_runs[run].points);
+//        ops_list.push(
+//            {
+//                op: "update",
+//                query: { loc: { $geoWithin: { $center: [
+//                    [circle.center.x, circle.center.y],
+//                    circle.radius
+//                ] } }},
+//                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
+//                multi: update_runs[run].multi
+//            }
+//        );
+//    }
+//    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinCenter", update_runs[run].multi),
+//        pre: function (collection) {
+//            populateGridData(collection);
+//            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        },
+//        ops: ops_list
+//    });
+//
+//    // $centerSphere
+//    ops_list = [];
+//    for (var i = 0; i < update_runs[run].ops; ++i) {
+//        var circle = getRandomSphericalCircleArea(update_runs[run].points);
+//        ops_list.push(
+//            {
+//                op: "update",
+//                query: { loc: { $geoWithin: { $centerSphere: [
+//                    [circle.center.long, circle.center.lat],
+//                    circle.radius
+//                ] } }},
+//                update: { $set: {note: { "#RAND_STRING": [ 50 ] }}},
+//                multi: update_runs[run].multi
+//            }
+//        );
+//    }
+//    tests.push({ name: buildUpdateTestName("Geo2DIndex.UpdateGeoWithinCenterSphere", update_runs[run].multi),
+//        pre: function (collection) {
+//            populateGridData(collection);
+//            collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        },
+//        ops: ops_list
+//    });
 }
-
-/**********************
- * Remove
- */
-var remove_shapes = [];
-var remove_points = [];
-
-// $box
-ops_list = [];
-remove_shapes = [];
-remove_points = [];
-for (var i = 0; i < 1000; ++i) {
-    var box = getRandomBox(30);
-    var shape = {loc: {$geoWithin: { $box: [
-        [box.bottomLeft.x, box.bottomLeft.y],
-        [box.upperRight.x, box.upperRight.y]
-    ]}}};
-    var point = { loc: [(box.upperRight.x - ((box.upperRight.x - box.bottomLeft.x) / 2)), (box.upperRight.y - ((box.upperRight.y - box.bottomLeft.y) / 2)) ]};
-    remove_shapes.push(shape);
-    remove_points.push(point);
-    shape.thread = { "#VARIABLE": "thread" };
-    point.thread = { "#VARIABLE": "thread" };
-    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
-    ops_list.push({op: "remove", query: shape });
-    ops_list.push({op: "insert", doc: point});
-}
-tests.push({ name: "Geo2DIndex.RemoveGeoWithinBox",
-    pre: function (collection, env) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-        remove_shapes.forEach(function (shape) {
-            collection.remove(shape);
-        });
-        for (var i = 0; i < env.threads; i++) {
-            remove_points.forEach(function (point) {
-                point.thread = i;
-                collection.insert(point);
-            });
-        }
-    },
-    ops: ops_list
-});
-
-// $polygon
-ops_list = [];
-remove_shapes = [];
-remove_points = [];
-for (var i = 0; i < 1000; ++i) {
-    var polygon = getRandomRegularHexagon(30);
-    var shape = {loc: {$geoWithin: { $polygon: polygon } } };
-    var point = { loc: [(polygon[3][0] - ((polygon[3][0] - polygon[0][0]) / 2)), (polygon[3][1] - ((polygon[3][1] - polygon[0][1]) / 2)) ]};
-    remove_shapes.push(shape);
-    remove_points.push(point);
-    shape.thread = { "#VARIABLE": "thread" };
-    point.thread = { "#VARIABLE": "thread" };
-    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
-    ops_list.push({op: "remove", query: shape });
-    ops_list.push({op: "insert", doc: point});
-}
-tests.push({ name: "Geo2DIndex.RemoveGeoWithinPolygon",
-    pre: function (collection, env) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-        remove_shapes.forEach(function (shape) {
-            collection.remove(shape);
-        });
-        for (var i = 0; i < env.threads; i++) {
-            remove_points.forEach(function (point) {
-                point.thread = i;
-                collection.insert(point);
-            });
-        }
-    },
-    ops: ops_list
-});
-
-// $center
-ops_list = [];
-remove_shapes = [];
-remove_points = [];
-for (var i = 0; i < 1000; ++i) {
-    var circle = getRandomCircle(30);
-    var shape = {loc: {$geoWithin: { $center: [
-        [circle.center.x, circle.center.y],
-        circle.radius
-    ] } } };
-    var point = { loc: [circle.center.x, circle.center.y]};
-    remove_shapes.push(shape);
-    remove_points.push(point);
-    shape.thread = { "#VARIABLE": "thread" };
-    point.thread = { "#VARIABLE": "thread" };
-    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
-    ops_list.push({op: "remove", query: shape });
-    ops_list.push({op: "insert", doc: point});
-}
-tests.push({ name: "Geo2DIndex.RemoveGeoWithinCenter",
-    pre: function (collection, env) {
-        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
-        populateGridData(collection);
-        remove_shapes.forEach(function (shape) {
-            collection.remove(shape);
-        });
-        for (var i = 0; i < env.threads; i++) {
-            remove_points.forEach(function (point) {
-                point.thread = i;
-                collection.insert(point);
-            });
-        }
-    },
-    ops: ops_list
-});
-
-// $centerSphere
-ops_list = [];
-remove_shapes = [];
-remove_points = [];
-for (var i = 0; i < 1000; ++i) {
-    var circle = getRandomSphericalCircleArea(30);
-    var shape = {loc: {$geoWithin: { $centerSphere: [
-        [circle.center.x, circle.center.y],
-        circle.radius
-    ] } } };
-    var point = { loc: [circle.center.x, circle.center.y]};
-    remove_shapes.push(shape);
-    remove_points.push(point);
-    shape.thread = { "#VARIABLE": "thread" };
-    point.thread = { "#VARIABLE": "thread" };
-    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
-    ops_list.push({op: "remove", query: shape });
-    ops_list.push({op: "insert", doc: point});
-}
-tests.push({ name: "Geo2DIndex.RemoveGeoWithinCenterSphere",
-    pre: function (collection, env) {
-        collection.ensureIndex({ "loc": "2d" });
-        populateSphericalData(collection);
-        remove_shapes.forEach(function (shape) {
-            collection.remove(shape);
-        });
-        for (var i = 0; i < env.threads; i++) {
-            remove_points.forEach(function (point) {
-                point.thread = i;
-                collection.insert(point);
-            });
-        }
-    },
-    ops: ops_list
-});
+//
+///**********************
+// * Remove
+// */
+//var remove_shapes = [];
+//var remove_points = [];
+//
+//// $box
+//ops_list = [];
+//remove_shapes = [];
+//remove_points = [];
+//for (var i = 0; i < 1000; ++i) {
+//    var box = getRandomBox(30);
+//    var shape = {loc: {$geoWithin: { $box: [
+//        [box.bottomLeft.x, box.bottomLeft.y],
+//        [box.upperRight.x, box.upperRight.y]
+//    ]}}};
+//    var point = { loc: [(box.upperRight.x - ((box.upperRight.x - box.bottomLeft.x) / 2)), (box.upperRight.y - ((box.upperRight.y - box.bottomLeft.y) / 2)) ]};
+//    remove_shapes.push(shape);
+//    remove_points.push(point);
+//    shape.thread = { "#VARIABLE": "thread" };
+//    point.thread = { "#VARIABLE": "thread" };
+//    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
+//    ops_list.push({op: "remove", query: shape });
+//    ops_list.push({op: "insert", doc: point});
+//}
+//tests.push({ name: "Geo2DIndex.RemoveGeoWithinBox",
+//    pre: function (collection, env) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//        remove_shapes.forEach(function (shape) {
+//            collection.remove(shape);
+//        });
+//        for (var i = 0; i < env.threads; i++) {
+//            remove_points.forEach(function (point) {
+//                point.thread = i;
+//                collection.insert(point);
+//            });
+//        }
+//    },
+//    ops: ops_list
+//});
+//
+//// $polygon
+//ops_list = [];
+//remove_shapes = [];
+//remove_points = [];
+//for (var i = 0; i < 1000; ++i) {
+//    var polygon = getRandomRegularHexagon(30);
+//    var shape = {loc: {$geoWithin: { $polygon: polygon } } };
+//    var point = { loc: [(polygon[3][0] - ((polygon[3][0] - polygon[0][0]) / 2)), (polygon[3][1] - ((polygon[3][1] - polygon[0][1]) / 2)) ]};
+//    remove_shapes.push(shape);
+//    remove_points.push(point);
+//    shape.thread = { "#VARIABLE": "thread" };
+//    point.thread = { "#VARIABLE": "thread" };
+//    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
+//    ops_list.push({op: "remove", query: shape });
+//    ops_list.push({op: "insert", doc: point});
+//}
+//tests.push({ name: "Geo2DIndex.RemoveGeoWithinPolygon",
+//    pre: function (collection, env) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//        remove_shapes.forEach(function (shape) {
+//            collection.remove(shape);
+//        });
+//        for (var i = 0; i < env.threads; i++) {
+//            remove_points.forEach(function (point) {
+//                point.thread = i;
+//                collection.insert(point);
+//            });
+//        }
+//    },
+//    ops: ops_list
+//});
+//
+//// $center
+//ops_list = [];
+//remove_shapes = [];
+//remove_points = [];
+//for (var i = 0; i < 1000; ++i) {
+//    var circle = getRandomCircle(30);
+//    var shape = {loc: {$geoWithin: { $center: [
+//        [circle.center.x, circle.center.y],
+//        circle.radius
+//    ] } } };
+//    var point = { loc: [circle.center.x, circle.center.y]};
+//    remove_shapes.push(shape);
+//    remove_points.push(point);
+//    shape.thread = { "#VARIABLE": "thread" };
+//    point.thread = { "#VARIABLE": "thread" };
+//    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
+//    ops_list.push({op: "remove", query: shape });
+//    ops_list.push({op: "insert", doc: point});
+//}
+//tests.push({ name: "Geo2DIndex.RemoveGeoWithinCenter",
+//    pre: function (collection, env) {
+//        collection.ensureIndex({ "loc": "2d" }, { "min": x_min, "max": x_max });
+//        populateGridData(collection);
+//        remove_shapes.forEach(function (shape) {
+//            collection.remove(shape);
+//        });
+//        for (var i = 0; i < env.threads; i++) {
+//            remove_points.forEach(function (point) {
+//                point.thread = i;
+//                collection.insert(point);
+//            });
+//        }
+//    },
+//    ops: ops_list
+//});
+//
+//// $centerSphere
+//ops_list = [];
+//remove_shapes = [];
+//remove_points = [];
+//for (var i = 0; i < 1000; ++i) {
+//    var circle = getRandomSphericalCircleArea(30);
+//    var shape = {loc: {$geoWithin: { $centerSphere: [
+//        [circle.center.x, circle.center.y],
+//        circle.radius
+//    ] } } };
+//    var point = { loc: [circle.center.x, circle.center.y]};
+//    remove_shapes.push(shape);
+//    remove_points.push(point);
+//    shape.thread = { "#VARIABLE": "thread" };
+//    point.thread = { "#VARIABLE": "thread" };
+//    ops_list.push({op: "let", target: "thread", value: {"#RAND_INT_PLUS_THREAD": [0, 1]}});
+//    ops_list.push({op: "remove", query: shape });
+//    ops_list.push({op: "insert", doc: point});
+//}
+//tests.push({ name: "Geo2DIndex.RemoveGeoWithinCenterSphere",
+//    pre: function (collection, env) {
+//        collection.ensureIndex({ "loc": "2d" });
+//        populateSphericalData(collection);
+//        remove_shapes.forEach(function (shape) {
+//            collection.remove(shape);
+//        });
+//        for (var i = 0; i < env.threads; i++) {
+//            remove_points.forEach(function (point) {
+//                point.thread = i;
+//                collection.insert(point);
+//            });
+//        }
+//    },
+//    ops: ops_list
+//});
