@@ -237,7 +237,6 @@ function do_git_tasks() {
         echo "downloading binary artifacts from MCI"
         BINARIES_OPTIONS=$(determine_get_binaries_options)
         echo "Getting Binaries with options: ${BINARIES_OPTIONS}"
-        GET_BINARIES_RESULTS=0
         if [ $THIS_PLATFORM == 'Windows' ]
         then
                 eval $(python `cygpath -w ${MPERFPATH}/util/get-mongodb-binaries` --dir `cygpath -w "${DLPATH}"` ${BINARIES_OPTIONS})
