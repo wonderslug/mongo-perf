@@ -140,11 +140,6 @@ TEST_JOURNAL_CONFIRM=false
 
 MMS_AUTOMATION=false
 
-# allow a branch or tag to be passed as the first argument
-if [ $# == 1 ]
-then
-    BRANCH=$1
-fi
 
 # Source the config file if its there
 CONFIG_FILE_PATH=$(get_script_path)
@@ -152,6 +147,14 @@ if [ -f "${CONFIG_FILE_PATH}/benchrun_daemon.conf" ]
 then
     source "${CONFIG_FILE_PATH}/benchrun_daemon.conf"
 fi
+
+# allow a branch or tag to be passed as the first argument
+if [ $# == 1 ]
+then
+    BRANCH=$1
+    unset BINARIES_MCI_PROJECT
+fi
+
 
 if [ $THIS_PLATFORM == 'Windows' ]
 then
@@ -234,12 +237,21 @@ function do_git_tasks() {
         echo "downloading binary artifacts from MCI"
         BINARIES_OPTIONS=$(determine_get_binaries_options)
         echo "Getting Binaries with options: ${BINARIES_OPTIONS}"
+        GET_BINARIES_RESULTS=0
         if [ $THIS_PLATFORM == 'Windows' ]
         then
                 eval $(python `cygpath -w ${MPERFPATH}/util/get-mongodb-binaries` --dir `cygpath -w "${DLPATH}"` ${BINARIES_OPTIONS})
         else
                 eval $(python ${MPERFPATH}/util/get-mongodb-binaries --dir "${DLPATH}" ${BINARIES_OPTIONS})
         fi
+
+        if [ "$GET_BINARIES_SUCCESSFUL" != "true" ]
+        then
+            echo "Unable to find good binaries to download"
+            return 0
+        fi
+
+
         chmod +x ${DLPATH}/${MONGOD}
         if [ ! -x ${DLPATH}/${MONGOD} ]
         then
@@ -354,10 +366,10 @@ function determine_storage_engines() {
     NO_ENGINES=$?
 
     SE_MMAP="mmapv1"
-    if [ "$NO_ENGINES" == "0" ]
-    then
-        SE_WT="wiredTiger"
-    fi
+#    if [ "$NO_ENGINES" == "0" ]
+#    then
+#        SE_WT="wiredTiger"
+#    fi
 }
 
 function clear_caches() {
@@ -584,6 +596,9 @@ function run_mongo_perf_mmsa() {
        # Run for mulltiple storage engines
         for STORAGE_ENGINE in $SE_WT $SE_MMAP
         do
+            unset TEST_REPLSET
+            unset BR_START
+            unset NUM_CPUS
             MMSA_OPTIONS_FILE=$(determine_mmsa_options_file)
             eval $(python ${MPERFPATH}/util/mms-automation-config --optionsfile ${MMSA_OPTIONS_FILE})
             sleep 15
@@ -607,7 +622,7 @@ function run_mongo_perf_mmsa() {
 
             # shutdown the server and clean up the files
             eval $(python ${MPERFPATH}/util/mms-automation-config --optionsfile ${MMSA_OPTIONS_FILE} --shutdown)
-            unlink ${MMSA_OPTIONS_FILE}
+            #unlink ${MMSA_OPTIONS_FILE}
         done
     done
 }

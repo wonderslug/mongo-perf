@@ -14,6 +14,7 @@ import tempfile
 import time
 
 from psutil import Process, NoSuchProcess
+from pymongo.errors import ConnectionFailure
 
 
 PORT_START = 27017
@@ -147,14 +148,17 @@ def wait_till_all_running(args, config_data):
                                            "mongo-perf-connect-to is set to "
                                            "true on the process that will be "
                                            "the primary")
-        client = pymongo.MongoClient("mongodb://%s:%s/test" % (hostname, port))
-        db = client.test
         while primary_left_wait_time > 0:
-            is_master = db.command('isMaster')
-            if (is_master['ismaster']
-                    and 'setName' in is_master.keys()
-                    and is_master['setName'] is not None):
-                break
+            try:
+                client = pymongo.MongoClient("mongodb://%s:%s/test" % (hostname, port))
+                db = client.test
+                is_master = db.command('isMaster')
+                if (is_master['ismaster']
+                        and 'setName' in is_master.keys()
+                        and is_master['setName'] is not None):
+                    break
+            except ConnectionFailure:
+                pass
             time.sleep(50.0 / 1000.0)
             primary_left_wait_time -= wait_sleep_time
 
@@ -251,7 +255,7 @@ def populate_config(args, config_file_data):
 
     config_file_data[MMSA_DB_SECTION_KEY] = [
         {
-            "name": args.download_version + args.download_git_hash,
+            "name": args.download_version + '-' +args.download_git_hash,
             "builds": [
                 {
                     "url": args.download_url,
@@ -283,7 +287,7 @@ def populate_config(args, config_file_data):
         if (MONGO_PERF_IGNORE_PROCESS_KEY not in process.keys()
                 or not process[MONGO_PERF_IGNORE_PROCESS_KEY]):
 
-            process['version'] = args.download_version + args.download_git_hash
+            process['version'] = args.download_version + '-' + args.download_git_hash
             db_path = os.path.join(args.data_path, process['name'])
             log_path = os.path.join(args.log_path, "%s.log" % process['name'])
             pid_file_path = os.path.join(args.pid_dir_path,

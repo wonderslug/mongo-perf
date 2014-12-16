@@ -33,17 +33,18 @@ def export_download_info(binaries_manager):
     :type binaries_manager: BinariesManager
     :return:
     """
-    print ("export MMSA_BINARIES_DOWNLOAD_LINK=%s"
+    print ("GET_BINARIES_SUCCESSFUL=true")
+    print ("MMSA_BINARIES_DOWNLOAD_LINK=%s"
            % binaries_manager.current_download.link)
 
-    print ("export MMSA_BINARIES_OS=%s"
+    print ("MMSA_BINARIES_OS=%s"
            % binaries_manager.requested_criteria.os_type)
 
     if binaries_manager.requested_criteria.cpu_arch is "x86_64":
         bits = 64
     else:
         bits = 32
-    print ("export MMSA_BINARIES_BITS=%s" % bits)
+    print ("MMSA_BINARIES_BITS=%s" % bits)
 
 def main():
     # Main Section
