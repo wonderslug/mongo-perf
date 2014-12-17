@@ -417,8 +417,8 @@ def get_rows(commit_regex, start_date, end_date, label_regex, version_regex,
         test_holder = []
         if 'singledb' in record.keys():
             test_holder = record['singledb']
-        elif 'multidb-multicoll' in record.keys():
-            test_holder = record['multidb-multicoll']
+        elif 'multidb' in record.keys():
+            test_holder = record['multidb']
 
         if 'server_storage_engine' in record:
             server_storage_engine = record['server_storage_engine']
@@ -541,8 +541,8 @@ def new_main_page():
         {"$sort": {"_id": 1}},
         {"$project": {"_id": 0, "test": "$_id"}}])['result']
     multi_tests = db.raw.aggregate(
-        [{"$unwind": "$multidb-multicoll"},
-         {"$group":{"_id":"$multidb-multicoll.name"}},
+        [{"$unwind": "$multidb"},
+         {"$group":{"_id":"$multidb.name"}},
          {"$sort": {"_id": 1}},
          {"$project": {"_id": 0, "test": "$_id"}}])['result']
 
