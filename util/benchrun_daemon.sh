@@ -365,10 +365,10 @@ function determine_storage_engines() {
     NO_ENGINES=$?
 
     SE_MMAP="mmapv1"
-#    if [ "$NO_ENGINES" == "0" ]
-#    then
-#        SE_WT="wiredTiger"
-#    fi
+    if [ "$NO_ENGINES" == "0" ]
+    then
+        SE_WT="wiredTiger"
+    fi
 }
 
 function clear_caches() {
@@ -621,7 +621,7 @@ function run_mongo_perf_mmsa() {
 
             # shutdown the server and clean up the files
             eval $(python ${MPERFPATH}/util/mms-automation-config --optionsfile ${MMSA_OPTIONS_FILE} --shutdown)
-            #unlink ${MMSA_OPTIONS_FILE}
+            unlink ${MMSA_OPTIONS_FILE}
         done
     done
 }
