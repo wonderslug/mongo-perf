@@ -432,6 +432,12 @@ function determine_mongod_options()
             then
                 MONGOD_OPTIONS+=" --wiredTigerEngineConfig checkpoint=(wait=${DISK_SYNC_DELAY})"
             fi
+            WTCDS_TEST=$(${DLPATH}/${MONGOD} --wiredTigerCheckpointDelaySecs ${DISK_SYNC_DELAY} --version)
+            NO_WTCDS=$?
+            if [ "$NO_WTCDS" == "0" ]
+            then
+                MONGOD_OPTIONS+=" --wiredTigerCheckpointDelaySecs ${DISK_SYNC_DELAY}"
+            fi
         else
             EXTRA=""
         fi
