@@ -464,6 +464,12 @@ function determine_mmsa_mongod_options()
             then
                 MMSA_MONGOD_OPTIONS+="\"wiredTiger\":{\"engineConfig\":\"checkpoint=(wait=${DISK_SYNC_DELAY})\"}"
             fi
+            WTCDS_TEST=$(${DLPATH}/${MONGOD} --wiredTigerCheckpointDelaySecs ${DISK_SYNC_DELAY} --version)
+            NO_WTCDS=$?
+            if [ "$NO_WTCDS" == "0" ]
+            then
+                MMSA_MONGOD_OPTIONS+="\"wiredTiger\":{\"engineConfig\":\"checkpoint=(wait=${DISK_SYNC_DELAY})\"}"
+            fi
         else
             EXTRA=""
         fi
